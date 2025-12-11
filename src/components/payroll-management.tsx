@@ -73,6 +73,7 @@ export function PayrollManagement() {
   const [deletingEmployeeAllowanceId, setDeletingEmployeeAllowanceId] = useState<number | null>(null)
 
   // Dialog states - Allowance
+  const [isCreateAllowanceDialogOpen, setIsCreateAllowanceDialogOpen] = useState(false)
   const [isEditAllowanceDialogOpen, setIsEditAllowanceDialogOpen] = useState(false)
   const [isDeleteAllowanceConfirmOpen, setIsDeleteAllowanceConfirmOpen] = useState(false)
   const [editingAllowance, setEditingAllowance] = useState<AllowanceResponse | null>(null)
@@ -184,15 +185,24 @@ export function PayrollManagement() {
     try {
       const summary = await payrollAPI.getPayrollSummary(month, year, departmentId)
       setPayrollSummary(summary)
-      // Load payrolls from summary response
+      
+      // Backend đã tự động fallback sang preview nếu không có payrolls thật
+      // Sử dụng field isPreview từ API response
       if (summary.payrolls && summary.payrolls.length > 0) {
         setPayrolls(summary.payrolls)
-        setIsPreviewMode(false) // Khi có payroll thật thì tắt preview mode
+        setIsPreviewMode(summary.isPreview === true) // Sử dụng flag từ API
+        setError(null)
+      } else {
+        // Nếu không có payrolls nào (cả thật và preview)
+        setPayrolls([])
+        setIsPreviewMode(true)
+        setError("Chưa có dữ liệu lương cho kỳ này.")
       }
-      setError(null)
     } catch (err: any) {
       console.error('Error loading payroll summary:', err)
-      setError(err.response?.data?.message || 'Không thể tải báo cáo tổng hợp')
+      setPayrolls([])
+      setIsPreviewMode(true)
+      setError(err.response?.data?.message || 'Không thể tải dữ liệu bảng lương')
     } finally {
       setLoading(false)
     }
@@ -235,8 +245,7 @@ export function PayrollManagement() {
   }
 
   useEffect(() => {
-    // Không load payrolls tự động vì backend không có endpoint GET /payrolls
-    // User sẽ click "Tính lương tự động" để load payrolls
+    // Tự động load payroll summary, nếu không có payrolls thật thì tự động hiển thị lương tạm tính
     loadPayrollSummary(selectedMonth, selectedYear)
   }, [selectedMonth, selectedYear])
 
@@ -1167,12 +1176,11 @@ export function PayrollManagement() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5 bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-900 dark:to-purple-900">
+        <TabsList className="grid w-full grid-cols-4 bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-900 dark:to-purple-900">
           <TabsTrigger value="payroll">Bảng lương</TabsTrigger>
           <TabsTrigger value="allowances">Loại phụ cấp</TabsTrigger>
           <TabsTrigger value="employee-allowances">Gán phụ cấp</TabsTrigger>
           <TabsTrigger value="payslips">Phiếu lương</TabsTrigger>
-          <TabsTrigger value="reports">Báo cáo</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payroll" className="space-y-4">
@@ -1374,7 +1382,20 @@ export function PayrollManagement() {
         <TabsContent value="allowances" className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Quản lý phụ cấp</h3>
-            <Button className="bg-teal-600 hover:bg-teal-700">
+            <Button 
+              className="bg-teal-600 hover:bg-teal-700"
+              onClick={() => {
+                setAllowanceForm({
+                  name: "",
+                  description: "",
+                  type: AllowanceType.FIXED,
+                  amount: 0,
+                  taxable: true,
+                  active: true
+                })
+                setIsCreateAllowanceDialogOpen(true)
+              }}
+            >
               <Plus className="h-4 w-4 mr-2" />
               Thêm phụ cấp
             </Button>
@@ -1453,78 +1474,6 @@ export function PayrollManagement() {
             </div>
           )}
 
-          <Card className="mt-6 shadow-vibrant hover-glow border-gradient">
-            <CardHeader>
-              <CardTitle>Thêm phụ cấp mới</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Tên phụ cấp *</Label>
-                  <Input
-                    placeholder="Nhập tên phụ cấp"
-                    value={allowanceForm.name}
-                    onChange={(e) => setAllowanceForm(prev => ({ ...prev, name: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Mức phụ cấp (VND) *</Label>
-                  <Input
-                    placeholder="0"
-                    type="number"
-                    value={allowanceForm.amount}
-                    onChange={(e) => setAllowanceForm(prev => ({ ...prev, amount: Number(e.target.value) }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Mô tả</Label>
-                  <Input
-                    placeholder="Nhập mô tả (tùy chọn)"
-                    value={allowanceForm.description || ""}
-                    onChange={(e) => setAllowanceForm(prev => ({ ...prev, description: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Loại phụ cấp *</Label>
-                  <Select
-                    value={allowanceForm.type}
-                    onValueChange={(value) => setAllowanceForm(prev => ({ ...prev, type: value as AllowanceType }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn loại" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={AllowanceType.FIXED}>Cố định</SelectItem>
-                      <SelectItem value={AllowanceType.PERCENTAGE}>Theo phần trăm</SelectItem>
-                      <SelectItem value={AllowanceType.VARIABLE}>Biến động</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Chịu thuế</Label>
-                  <Select
-                    value={allowanceForm.taxable ? "true" : "false"}
-                    onValueChange={(value) => setAllowanceForm(prev => ({ ...prev, taxable: value === "true" }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">Có</SelectItem>
-                      <SelectItem value="false">Không</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <Button
-                className="bg-teal-600 hover:bg-teal-700"
-                onClick={handleCreateAllowance}
-                disabled={loading}
-              >
-                {loading ? "Đang tạo..." : "Tạo phụ cấp"}
-              </Button>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="employee-allowances" className="space-y-4">
@@ -1699,84 +1648,6 @@ export function PayrollManagement() {
                 </CardContent>
               </Card>
             ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="reports" className="space-y-4">
-          <h3 className="text-lg font-semibold">Báo cáo quỹ lương</h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="shadow-vibrant hover-glow border-gradient">
-              <CardHeader>
-                <CardTitle>Lịch sử thanh toán</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {payrollHistory.map((history) => (
-                    <div key={history.month} className="flex justify-between items-center p-3 border rounded">
-                      <div>
-                        <div className="font-medium">{history.month}</div>
-                        <div className="text-sm text-muted-foreground">{history.employees} nhân viên</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold">{formatCurrency(history.totalPaid)}</div>
-                        <div className="text-sm text-muted-foreground">TB: {formatCurrency(history.avgSalary)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-vibrant hover-glow border-gradient">
-              <CardHeader>
-                <CardTitle>Báo cáo tùy chỉnh</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Loại báo cáo</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn loại báo cáo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monthly">Báo cáo tháng</SelectItem>
-                      <SelectItem value="quarterly">Báo cáo quý</SelectItem>
-                      <SelectItem value="yearly">Báo cáo năm</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Thời gian</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn thời gian" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="current">Tháng hiện tại</SelectItem>
-                      <SelectItem value="last">Tháng trước</SelectItem>
-                      <SelectItem value="custom">Tùy chỉnh</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Phòng ban</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn phòng ban" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      <SelectItem value="tech">Kỹ thuật</SelectItem>
-                      <SelectItem value="marketing">Marketing</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button className="w-full bg-teal-600 hover:bg-teal-700">
-                  Tạo báo cáo
-                </Button>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
       </Tabs>
@@ -1970,6 +1841,109 @@ export function PayrollManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Allowance Dialog */}
+      <Dialog open={isCreateAllowanceDialogOpen} onOpenChange={setIsCreateAllowanceDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Thêm phụ cấp mới</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tên phụ cấp *</Label>
+                <Input
+                  placeholder="Nhập tên phụ cấp"
+                  value={allowanceForm.name}
+                  onChange={(e) => setAllowanceForm(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Mức phụ cấp (VND) *</Label>
+                <Input
+                  placeholder="0"
+                  type="number"
+                  value={allowanceForm.amount}
+                  onChange={(e) => setAllowanceForm(prev => ({ ...prev, amount: Number(e.target.value) }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Mô tả</Label>
+                <Input
+                  placeholder="Nhập mô tả (tùy chọn)"
+                  value={allowanceForm.description || ""}
+                  onChange={(e) => setAllowanceForm(prev => ({ ...prev, description: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Loại phụ cấp *</Label>
+                <Select
+                  value={allowanceForm.type}
+                  onValueChange={(value) => setAllowanceForm(prev => ({ ...prev, type: value as AllowanceType }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn loại" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AllowanceType.FIXED}>Cố định</SelectItem>
+                    <SelectItem value={AllowanceType.PERCENTAGE}>Theo phần trăm</SelectItem>
+                    <SelectItem value={AllowanceType.VARIABLE}>Biến động</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Chịu thuế</Label>
+                <Select
+                  value={allowanceForm.taxable ? "true" : "false"}
+                  onValueChange={(value) => setAllowanceForm(prev => ({ ...prev, taxable: value === "true" }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Có</SelectItem>
+                    <SelectItem value="false">Không</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {error && (
+              <Alert className="border-red-500 bg-red-50 dark:bg-red-900/20">
+                <AlertDescription className="text-red-800 dark:text-red-200">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCreateAllowanceDialogOpen(false)
+                  setAllowanceForm({
+                    name: "",
+                    description: "",
+                    type: AllowanceType.FIXED,
+                    amount: 0,
+                    taxable: true,
+                    active: true
+                  })
+                  setError(null)
+                }}
+                disabled={loading}
+              >
+                Hủy
+              </Button>
+              <Button
+                className="bg-teal-600 hover:bg-teal-700"
+                onClick={handleCreateAllowance}
+                disabled={loading}
+              >
+                {loading ? "Đang tạo..." : "Tạo phụ cấp"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Allowance Dialog */}
       <Dialog open={isEditAllowanceDialogOpen} onOpenChange={setIsEditAllowanceDialogOpen}>

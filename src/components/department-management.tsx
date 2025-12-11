@@ -1159,8 +1159,8 @@ export function DepartmentManagement() {
                         <SelectItem value="SENIOR_STAFF">Nhân viên cấp cao</SelectItem>
                         <SelectItem value="SUPERVISOR">Giám sát</SelectItem>
                         <SelectItem value="ASSISTANT_MANAGER">Phó quản lý</SelectItem>
-                        <SelectItem value="MANAGER">Manager</SelectItem>
-                        <SelectItem value="DIRECTOR">Director</SelectItem>
+                        <SelectItem value="MANAGER">Quản lý cửa hàng</SelectItem>
+                        <SelectItem value="DIRECTOR">Giám đốc</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

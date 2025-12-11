@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Users, Plus, Edit, Trash2, Search, Power, PowerOff, UserCog } from "lucide-react"
+import { Users, Plus, Edit, Trash2, Search, Power, PowerOff, UserCog, Sparkles } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Textarea } from "./ui/textarea"
+import { Separator } from "./ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 import { Alert, AlertDescription } from "./ui/alert"
@@ -20,6 +21,7 @@ import { positionAPI, Position } from "../lib/api/position"
 import { attendanceAPI } from "../lib/api/attendance"
 import { EmployeeDetailModal } from "./employee-detail-modal"
 import { PromoteEmployeeDialog } from "./promote-employee-dialog"
+import { CVParserDialog } from "./cv-parser-dialog"
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "./ui/pagination"
 import { LoadingTable } from "./ui/loading"
 
@@ -68,6 +70,19 @@ interface EmployeeFormData {
     positionId?: number
     managerId?: number
     workShiftId?: number
+    // CV/Resume fields (optional)
+    educationLevel?: string
+    educationMajor?: string
+    educationSchool?: string
+    educationGraduationYear?: number
+    yearsOfExperience?: number
+    previousExperience?: string // JSON string
+    skills?: string // JSON array string
+    languages?: string // JSON array string
+    certifications?: string // JSON array string
+    bio?: string
+    linkedinUrl?: string
+    portfolioUrl?: string
 }
 
 export function EmployeeManagement() {
@@ -87,6 +102,7 @@ export function EmployeeManagement() {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+    const [isCVParserOpen, setIsCVParserOpen] = useState(false)
 
     // Detail modal states
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
@@ -228,6 +244,43 @@ export function EmployeeManagement() {
         }
     }
 
+    // Handle CV parsed data
+    const handleCVParseSuccess = (parsedData: CreateEmployeeRequest) => {
+        // Fill form with parsed data
+        setFormData(prev => ({
+            ...prev,
+            firstName: parsedData.firstName || "",
+            lastName: parsedData.lastName || "",
+            email: parsedData.email || "",
+            phone: parsedData.phone || "",
+            address: parsedData.address || "",
+            birthDate: parsedData.birthDate || "",
+            nationalId: parsedData.nationalId || "",
+            gender: parsedData.gender || Gender.MALE,
+            maritalStatus: parsedData.maritalStatus || MaritalStatus.SINGLE,
+            hireDate: parsedData.hireDate || new Date().toISOString().split('T')[0],
+            emergencyContact: "",
+            emergencyPhone: "",
+            // CV/Resume fields
+            educationLevel: parsedData.educationLevel,
+            educationMajor: parsedData.educationMajor,
+            educationSchool: parsedData.educationSchool,
+            educationGraduationYear: parsedData.educationGraduationYear,
+            yearsOfExperience: parsedData.yearsOfExperience,
+            previousExperience: parsedData.previousExperience,
+            skills: parsedData.skills,
+            languages: parsedData.languages,
+            certifications: parsedData.certifications,
+            bio: parsedData.bio,
+            linkedinUrl: parsedData.linkedinUrl,
+            portfolioUrl: parsedData.portfolioUrl,
+            // Note: departmentId, positionId cần user chọn thủ công
+        }))
+
+        // Open create dialog
+        setIsCreateDialogOpen(true)
+    }
+
     // Create employee
     const handleCreateEmployee = async () => {
         if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim()) {
@@ -260,7 +313,20 @@ export function EmployeeManagement() {
             departmentId: formData.departmentId,
             positionId: formData.positionId,
             managerId: formData.managerId,
-            workShiftId: formData.workShiftId
+            workShiftId: formData.workShiftId,
+            // CV/Resume fields
+            educationLevel: formData.educationLevel,
+            educationMajor: formData.educationMajor,
+            educationSchool: formData.educationSchool,
+            educationGraduationYear: formData.educationGraduationYear,
+            yearsOfExperience: formData.yearsOfExperience,
+            previousExperience: formData.previousExperience,
+            skills: formData.skills,
+            languages: formData.languages,
+            certifications: formData.certifications,
+            bio: formData.bio,
+            linkedinUrl: formData.linkedinUrl,
+            portfolioUrl: formData.portfolioUrl
         }
 
         try {
@@ -381,6 +447,78 @@ export function EmployeeManagement() {
         return trimmed.length > 0 ? trimmed : undefined
     }
 
+    /**
+     * Convert skills/certifications từ format "Item1; Item2" sang JSON array string
+     */
+    const convertToJSONArray = (value?: string | null): string | undefined => {
+        if (!value || !value.trim()) return undefined
+        const items = value.split(';')
+            .map(item => item.trim())
+            .filter(item => item.length > 0)
+        if (items.length === 0) return undefined
+        return JSON.stringify(items)
+    }
+
+    /**
+     * Convert languages từ format "Ngôn ngữ: Mức độ; Ngôn ngữ2: Mức độ2" sang JSON array string
+     * Ví dụ: "Tiếng Anh: Trung cấp; Tiếng Việt: Bản xứ" → [{"language": "Tiếng Anh", "level": "Trung cấp"}, ...]
+     */
+    const convertLanguagesToJSON = (value?: string | null): string | undefined => {
+        if (!value || !value.trim()) return undefined
+        const items = value.split(';')
+            .map(item => item.trim())
+            .filter(item => item.length > 0)
+            .map(item => {
+                const parts = item.split(':').map(p => p.trim())
+                if (parts.length >= 2) {
+                    return { language: parts[0], level: parts[1] }
+                } else {
+                    return { language: parts[0], level: "Basic" } // Default level
+                }
+            })
+        if (items.length === 0) return undefined
+        return JSON.stringify(items)
+    }
+
+    /**
+     * Convert JSON array string về format hiển thị "Item1; Item2"
+     */
+    const convertJSONArrayToDisplay = (jsonString?: string | null): string => {
+        if (!jsonString || !jsonString.trim()) return ""
+        try {
+            const arr = JSON.parse(jsonString)
+            if (Array.isArray(arr)) {
+                return arr.join('; ')
+            }
+        } catch {
+            // Nếu không parse được, trả về nguyên bản (có thể là format cũ)
+            return jsonString
+        }
+        return ""
+    }
+
+    /**
+     * Convert languages JSON về format hiển thị "Ngôn ngữ: Mức độ; ..."
+     */
+    const convertLanguagesToDisplay = (jsonString?: string | null): string => {
+        if (!jsonString || !jsonString.trim()) return ""
+        try {
+            const arr = JSON.parse(jsonString)
+            if (Array.isArray(arr)) {
+                return arr.map((item: any) => {
+                    if (typeof item === 'object' && item.language) {
+                        return `${item.language}: ${item.level || 'Basic'}`
+                    } else {
+                        return String(item)
+                    }
+                }).join('; ')
+            }
+        } catch {
+            return jsonString
+        }
+        return ""
+    }
+
     // Reset form
     const resetForm = () => {
         setFormData({
@@ -401,7 +539,20 @@ export function EmployeeManagement() {
             departmentId: undefined,
             positionId: undefined,
             managerId: undefined,
-            workShiftId: undefined
+            workShiftId: undefined,
+            // CV/Resume fields
+            educationLevel: undefined,
+            educationMajor: undefined,
+            educationSchool: undefined,
+            educationGraduationYear: undefined,
+            yearsOfExperience: undefined,
+            previousExperience: undefined,
+            skills: undefined,
+            languages: undefined,
+            certifications: undefined,
+            bio: undefined,
+            linkedinUrl: undefined,
+            portfolioUrl: undefined
         })
     }
 
@@ -426,7 +577,20 @@ export function EmployeeManagement() {
             departmentId: employee.departmentId,
             positionId: employee.positionId,
             managerId: employee.managerId,
-            workShiftId: employee.workShiftId
+            workShiftId: employee.workShiftId,
+            // CV/Resume fields
+            educationLevel: employee.educationLevel,
+            educationMajor: employee.educationMajor,
+            educationSchool: employee.educationSchool,
+            educationGraduationYear: employee.educationGraduationYear,
+            yearsOfExperience: employee.yearsOfExperience,
+            previousExperience: employee.previousExperience,
+            skills: employee.skills,
+            languages: employee.languages,
+            certifications: employee.certifications,
+            bio: employee.bio,
+            linkedinUrl: employee.linkedinUrl,
+            portfolioUrl: employee.portfolioUrl
         }
         setFormData(formData)
         
@@ -595,13 +759,22 @@ export function EmployeeManagement() {
             {/* Actions Bar */}
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-lg font-semibold">Danh sách nhân viên</h3>
-                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white shadow-md hover:shadow-lg hover:brightness-110 transition-all duration-200 border-0">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Thêm nhân viên mới
-                        </Button>
-                    </DialogTrigger>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        onClick={() => setIsCVParserOpen(true)}
+                        className="border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                    >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Thêm nhân viên với AI
+                    </Button>
+                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white shadow-md hover:shadow-lg hover:brightness-110 transition-all duration-200 border-0">
+                                <Plus className="h-4 w-4 mr-2" />
+                                Thêm nhân viên mới
+                            </Button>
+                        </DialogTrigger>
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Tạo Nhân Viên Mới</DialogTitle>
@@ -729,16 +902,16 @@ export function EmployeeManagement() {
                                     </Select>
                                 </div>
                                 <div>
-                                    <Label htmlFor="status">Trạng thái</Label>
+                                    <Label htmlFor="maritalStatus">Tình trạng hôn nhân</Label>
                                     <Select
-                                        value={formData.status}
-                                        onValueChange={(value) => setFormData(prev => ({ ...prev, status: value as EmployeeStatus }))}
+                                        value={formData.maritalStatus}
+                                        onValueChange={(value) => setFormData(prev => ({ ...prev, maritalStatus: value as MaritalStatus }))}
                                     >
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {STATUS_OPTIONS.map((option) => (
+                                            {MARITAL_STATUS_OPTIONS.map((option) => (
                                                 <SelectItem key={option.value} value={option.value}>
                                                     {option.label}
                                                 </SelectItem>
@@ -747,6 +920,263 @@ export function EmployeeManagement() {
                                     </Select>
                                 </div>
                             </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="birthDate">Ngày sinh</Label>
+                                    <Input
+                                        id="birthDate"
+                                        type="date"
+                                        value={formData.birthDate}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, birthDate: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="nationalId">CMND/CCCD</Label>
+                                    <Input
+                                        id="nationalId"
+                                        value={formData.nationalId}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, nationalId: e.target.value }))}
+                                        placeholder="Nhập số CMND/CCCD"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <Label htmlFor="address">Địa chỉ</Label>
+                                <Textarea
+                                    id="address"
+                                    value={formData.address}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                                    placeholder="Nhập địa chỉ"
+                                    rows={2}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="managerId">Quản lý trực tiếp</Label>
+                                    <Select
+                                        value={formData.managerId?.toString() || "none"}
+                                        onValueChange={(value) => {
+                                            if (value === "none") {
+                                                setFormData(prev => ({ ...prev, managerId: undefined }))
+                                            } else {
+                                                const managerId = parseInt(value)
+                                                if (!isNaN(managerId)) {
+                                                    setFormData(prev => ({ ...prev, managerId: managerId }))
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Chọn quản lý" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[200px] overflow-y-auto">
+                                            <SelectItem value="none">Không có</SelectItem>
+                                            {employees.map((emp) => (
+                                                <SelectItem key={emp.id} value={emp.id.toString()}>
+                                                    {emp.fullName} ({emp.employeeCode})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label htmlFor="workShiftId">Ca làm việc</Label>
+                                    <Select
+                                        value={formData.workShiftId?.toString() || "none"}
+                                        onValueChange={(value) => setFormData(prev => ({ ...prev, workShiftId: value === "none" ? undefined : parseInt(value) }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Chọn ca làm việc" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Không có</SelectItem>
+                                            {workShifts.map((shift) => (
+                                                <SelectItem key={shift.id} value={shift.id.toString()}>
+                                                    {shift.name} ({shift.startTime} - {shift.endTime})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="emergencyContact">Liên hệ khẩn cấp</Label>
+                                    <Input
+                                        id="emergencyContact"
+                                        value={formData.emergencyContact}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, emergencyContact: e.target.value }))}
+                                        placeholder="Tên người liên hệ khẩn cấp"
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="emergencyPhone">Số điện thoại khẩn cấp</Label>
+                                    <Input
+                                        id="emergencyPhone"
+                                        value={formData.emergencyPhone}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, emergencyPhone: e.target.value }))}
+                                        placeholder="Số điện thoại liên hệ khẩn cấp"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <Label htmlFor="status">Trạng thái</Label>
+                                <Select
+                                    value={formData.status}
+                                    onValueChange={(value) => setFormData(prev => ({ ...prev, status: value as EmployeeStatus }))}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {STATUS_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* CV/Resume Fields Section */}
+                            <Separator className="my-4" />
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Thông tin CV/Resume (Tùy chọn)</h3>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label htmlFor="educationLevel">Trình độ học vấn</Label>
+                                        <Input
+                                            id="educationLevel"
+                                            value={formData.educationLevel || ""}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, educationLevel: e.target.value || undefined }))}
+                                            placeholder="Ví dụ: Đại học, Cao đẳng"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="educationMajor">Chuyên ngành</Label>
+                                        <Input
+                                            id="educationMajor"
+                                            value={formData.educationMajor || ""}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, educationMajor: e.target.value || undefined }))}
+                                            placeholder="Ví dụ: Quản trị kinh doanh"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label htmlFor="educationSchool">Tên trường</Label>
+                                        <Input
+                                            id="educationSchool"
+                                            value={formData.educationSchool || ""}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, educationSchool: e.target.value || undefined }))}
+                                            placeholder="Tên trường đại học/cao đẳng"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="educationGraduationYear">Năm tốt nghiệp</Label>
+                                        <Input
+                                            id="educationGraduationYear"
+                                            type="number"
+                                            value={formData.educationGraduationYear || ""}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, educationGraduationYear: e.target.value ? parseInt(e.target.value) : undefined }))}
+                                            placeholder="Ví dụ: 2020"
+                                            min="1950"
+                                            max={new Date().getFullYear()}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label htmlFor="yearsOfExperience">Số năm kinh nghiệm</Label>
+                                        <Input
+                                            id="yearsOfExperience"
+                                            type="number"
+                                            value={formData.yearsOfExperience || ""}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, yearsOfExperience: e.target.value ? parseInt(e.target.value) : undefined }))}
+                                            placeholder="Số năm"
+                                            min="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="linkedinUrl">LinkedIn URL</Label>
+                                        <Input
+                                            id="linkedinUrl"
+                                            type="url"
+                                            value={formData.linkedinUrl || ""}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, linkedinUrl: e.target.value || undefined }))}
+                                            placeholder="https://linkedin.com/in/..."
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="portfolioUrl">Portfolio URL</Label>
+                                    <Input
+                                        id="portfolioUrl"
+                                        type="url"
+                                        value={formData.portfolioUrl || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, portfolioUrl: e.target.value || undefined }))}
+                                        placeholder="https://..."
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="bio">Tóm tắt về bản thân</Label>
+                                    <Textarea
+                                        id="bio"
+                                        value={formData.bio || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, bio: e.target.value || undefined }))}
+                                        placeholder="Mô tả ngắn gọn về kinh nghiệm và kỹ năng..."
+                                        rows={3}
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="skills">Kỹ năng (phân cách bằng dấu ;)</Label>
+                                    <Textarea
+                                        id="skills"
+                                        value={formData.skills ? convertJSONArrayToDisplay(formData.skills) : ""}
+                                        onChange={(e) => {
+                                            const jsonValue = convertToJSONArray(e.target.value)
+                                            setFormData(prev => ({ ...prev, skills: jsonValue }))
+                                        }}
+                                        placeholder="Giao tiếp; Bán hàng; Chăm sóc khách hàng"
+                                        rows={2}
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="languages">Ngôn ngữ (format: Ngôn ngữ: Mức độ, phân cách bằng ;)</Label>
+                                    <Textarea
+                                        id="languages"
+                                        value={formData.languages ? convertLanguagesToDisplay(formData.languages) : ""}
+                                        onChange={(e) => {
+                                            const jsonValue = convertLanguagesToJSON(e.target.value)
+                                            setFormData(prev => ({ ...prev, languages: jsonValue }))
+                                        }}
+                                        placeholder="Tiếng Anh: Trung cấp; Tiếng Việt: Bản xứ"
+                                        rows={2}
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="certifications">Chứng chỉ (phân cách bằng dấu ;)</Label>
+                                    <Textarea
+                                        id="certifications"
+                                        value={formData.certifications ? convertJSONArrayToDisplay(formData.certifications) : ""}
+                                        onChange={(e) => {
+                                            const jsonValue = convertToJSONArray(e.target.value)
+                                            setFormData(prev => ({ ...prev, certifications: jsonValue }))
+                                        }}
+                                        placeholder="Chứng chỉ bán hàng; Chứng chỉ chăm sóc khách hàng"
+                                        rows={2}
+                                    />
+                                </div>
+                            </div>
+
                             <div className="flex justify-end space-x-2">
                                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                                     Hủy
@@ -758,6 +1188,7 @@ export function EmployeeManagement() {
                         </div>
                     </DialogContent>
                 </Dialog>
+                </div>
             </div>
 
             {/* Search */}
@@ -1241,6 +1672,146 @@ export function EmployeeManagement() {
                                 />
                             </div>
                         </div>
+
+                        {/* CV/Resume Fields Section */}
+                        <Separator className="my-4" />
+                        <div className="space-y-4">
+                            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Thông tin CV/Resume</h3>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="edit-educationLevel">Trình độ học vấn</Label>
+                                    <Input
+                                        id="edit-educationLevel"
+                                        value={formData.educationLevel || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, educationLevel: e.target.value || undefined }))}
+                                        placeholder="Ví dụ: Đại học, Cao đẳng"
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="edit-educationMajor">Chuyên ngành</Label>
+                                    <Input
+                                        id="edit-educationMajor"
+                                        value={formData.educationMajor || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, educationMajor: e.target.value || undefined }))}
+                                        placeholder="Ví dụ: Quản trị kinh doanh"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="edit-educationSchool">Tên trường</Label>
+                                    <Input
+                                        id="edit-educationSchool"
+                                        value={formData.educationSchool || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, educationSchool: e.target.value || undefined }))}
+                                        placeholder="Tên trường đại học/cao đẳng"
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="edit-educationGraduationYear">Năm tốt nghiệp</Label>
+                                    <Input
+                                        id="edit-educationGraduationYear"
+                                        type="number"
+                                        value={formData.educationGraduationYear || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, educationGraduationYear: e.target.value ? parseInt(e.target.value) : undefined }))}
+                                        placeholder="Ví dụ: 2020"
+                                        min="1950"
+                                        max={new Date().getFullYear()}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="edit-yearsOfExperience">Số năm kinh nghiệm</Label>
+                                    <Input
+                                        id="edit-yearsOfExperience"
+                                        type="number"
+                                        value={formData.yearsOfExperience || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, yearsOfExperience: e.target.value ? parseInt(e.target.value) : undefined }))}
+                                        placeholder="Số năm"
+                                        min="0"
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="edit-linkedinUrl">LinkedIn URL</Label>
+                                    <Input
+                                        id="edit-linkedinUrl"
+                                        type="url"
+                                        value={formData.linkedinUrl || ""}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, linkedinUrl: e.target.value || undefined }))}
+                                        placeholder="https://linkedin.com/in/..."
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <Label htmlFor="edit-portfolioUrl">Portfolio URL</Label>
+                                <Input
+                                    id="edit-portfolioUrl"
+                                    type="url"
+                                    value={formData.portfolioUrl || ""}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, portfolioUrl: e.target.value || undefined }))}
+                                    placeholder="https://..."
+                                />
+                            </div>
+
+                            <div>
+                                <Label htmlFor="edit-bio">Tóm tắt về bản thân</Label>
+                                <Textarea
+                                    id="edit-bio"
+                                    value={formData.bio || ""}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, bio: e.target.value || undefined }))}
+                                    placeholder="Mô tả ngắn gọn về kinh nghiệm và kỹ năng..."
+                                    rows={3}
+                                />
+                            </div>
+
+                            <div>
+                                <Label htmlFor="edit-skills">Kỹ năng (phân cách bằng dấu ;)</Label>
+                                <Textarea
+                                    id="edit-skills"
+                                    value={formData.skills ? convertJSONArrayToDisplay(formData.skills) : ""}
+                                    onChange={(e) => {
+                                        const jsonValue = convertToJSONArray(e.target.value)
+                                        setFormData(prev => ({ ...prev, skills: jsonValue }))
+                                    }}
+                                    placeholder="Giao tiếp; Bán hàng; Chăm sóc khách hàng"
+                                    rows={2}
+                                />
+                            </div>
+
+                            <div>
+                                <Label htmlFor="edit-languages">Ngôn ngữ (format: Ngôn ngữ: Mức độ, phân cách bằng ;)</Label>
+                                <Textarea
+                                    id="edit-languages"
+                                    value={formData.languages ? convertLanguagesToDisplay(formData.languages) : ""}
+                                    onChange={(e) => {
+                                        const jsonValue = convertLanguagesToJSON(e.target.value)
+                                        setFormData(prev => ({ ...prev, languages: jsonValue }))
+                                    }}
+                                    placeholder="Tiếng Anh: Trung cấp; Tiếng Việt: Bản xứ"
+                                    rows={2}
+                                />
+                            </div>
+
+                            <div>
+                                <Label htmlFor="edit-certifications">Chứng chỉ (phân cách bằng dấu ;)</Label>
+                                <Textarea
+                                    id="edit-certifications"
+                                    value={formData.certifications ? convertJSONArrayToDisplay(formData.certifications) : ""}
+                                    onChange={(e) => {
+                                        const jsonValue = convertToJSONArray(e.target.value)
+                                        setFormData(prev => ({ ...prev, certifications: jsonValue }))
+                                    }}
+                                    placeholder="Chứng chỉ bán hàng; Chứng chỉ chăm sóc khách hàng"
+                                    rows={2}
+                                />
+                            </div>
+                        </div>
+
                         <div className="flex justify-end space-x-2">
                             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                                 Hủy
@@ -1273,6 +1844,14 @@ export function EmployeeManagement() {
                     }}
                 />
             )}
+
+            {/* CV Parser Dialog */}
+            <CVParserDialog
+                open={isCVParserOpen}
+                onOpenChange={setIsCVParserOpen}
+                onParseSuccess={handleCVParseSuccess}
+            />
+
             <PromoteEmployeeDialog
                 employee={promotingEmployee}
                 open={isPromoteDialogOpen}

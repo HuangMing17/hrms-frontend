@@ -30,14 +30,23 @@ export function PositionDetailModal({
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [employeeCount, setEmployeeCount] = useState(0)
+    const [mounted, setMounted] = useState(false)
+
+    // Handle mount/unmount to prevent removeChild errors
+    useEffect(() => {
+        setMounted(true)
+        return () => {
+            setMounted(false)
+        }
+    }, [])
 
     // Load department info when modal opens
     useEffect(() => {
-        if (isOpen && position) {
+        if (isOpen && position && mounted) {
             loadDepartmentInfo()
             loadEmployeeCount()
         }
-    }, [isOpen, position])
+    }, [isOpen, position, mounted])
 
     const loadDepartmentInfo = async () => {
         try {
@@ -83,10 +92,19 @@ export function PositionDetailModal({
         return colors[level as keyof typeof colors] || "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
     }
 
-    if (!isOpen) return null
+    if (!isOpen || !mounted) {
+        return null
+    }
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                    onClose()
+                }
+            }}
+        >
             <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b">

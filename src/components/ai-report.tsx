@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { Editor } from "@tinymce/tinymce-react"
 import { startOfWeek, endOfWeek, format } from "date-fns"
 import { vi } from "date-fns/locale"
@@ -10,13 +10,16 @@ import { Input } from "./ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 import { Alert, AlertDescription } from "./ui/alert"
 import { LoadingPage, LoadingInline } from "./ui/loading"
-import { attendanceAPI, AttendanceRecord, WorkScheduleResponse, WorkScheduleStatus } from "../lib/api/attendance"
-import { payrollAPI, PayrollSummaryResponse } from "../lib/api/payroll"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
+import { attendanceAPI, AttendanceRecord, WorkScheduleResponse, WorkScheduleStatus, AttendanceSummaryResponse, WorkShiftResponse } from "../lib/api/attendance"
+import { payrollAPI, PayrollSummaryResponse, PayrollPreviewResponse } from "../lib/api/payroll"
+import { allowanceAPI, AllowanceResponse } from "../lib/api/allowance"
 import { departmentAPI, Department } from "../lib/api/department"
-import { leaveAPI, LeaveRequest, LeaveStatus } from "../lib/api/leave"
+import { leaveAPI, LeaveRequest, LeaveStatus, LeaveType, LeaveBalance } from "../lib/api/leave"
 import { aiReportAPI, AIReportContext, AIReportFilters, LeaveSummary, WorkScheduleSummary } from "../lib/api/ai-report"
 
 type RangeType = "week" | "month" | "custom"
+type ReportType = "overview" | "attendance" | "payroll" | "leave" | "schedule"
 
 function getCurrentWeekRange() {
   const today = new Date()
@@ -37,7 +40,15 @@ export function AIReportPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all")
 
+  const [reportType, setReportType] = useState<ReportType>("overview")
   const [reportText, setReportText] = useState<string>("")
+  const [reportTexts, setReportTexts] = useState<{
+    overview?: string
+    attendance?: string
+    payroll?: string
+    leave?: string
+    schedule?: string
+  }>({})
   const [recipientEmail, setRecipientEmail] = useState<string>("")
 
   const [loadingData, setLoadingData] = useState(false)
@@ -158,7 +169,8 @@ export function AIReportPage() {
     }
   }
 
-  const handleGenerateReport = async () => {
+  // Báo cáo tổng hợp (giữ nguyên logic cũ)
+  const handleGenerateOverviewReport = async () => {
     setError(null)
     setSuccessMessage(null)
     setGenerating(true)
@@ -185,7 +197,6 @@ export function AIReportPage() {
           new Date(filters.startDate).getFullYear(),
           filters.departmentId
         ),
-        // Lấy tất cả đơn nghỉ phép trong kỳ (tạm thời không filter theo phòng ban do API chưa trả về department)
         leaveAPI.getAllLeaveRequests({
           page: 0,
           size: 1000,
@@ -206,6 +217,7 @@ export function AIReportPage() {
       const context: AIReportContext = {
         filters,
         generatedAt: new Date().toISOString(),
+        reportType: "overview",
         attendance: {
           totalRecords: attendanceResult.totalElements,
           totalEmployees: attendanceAggregates.length,
@@ -217,16 +229,467 @@ export function AIReportPage() {
       }
 
       const aiText = await aiReportAPI.generateReport(context)
+      setReportTexts(prev => ({ ...prev, overview: aiText }))
       setReportText(aiText || "")
-      setSuccessMessage("Đã tạo báo cáo bằng AI. Bạn có thể chỉnh sửa nội dung trước khi gửi.")
+      setSuccessMessage("Đã tạo báo cáo tổng hợp bằng AI. Bạn có thể chỉnh sửa nội dung trước khi gửi.")
     } catch (err: any) {
-      console.error("Error generating AI report:", err)
-      setError(err?.response?.data?.message || err.message || "Không thể tạo báo cáo AI")
+      console.error("Error generating overview report:", err)
+      setError(err?.response?.data?.message || err.message || "Không thể tạo báo cáo tổng hợp")
     } finally {
       setGenerating(false)
       setLoadingData(false)
     }
   }
+
+  // Báo cáo chấm công chi tiết
+  const handleGenerateAttendanceReport = async () => {
+    setError(null)
+    setSuccessMessage(null)
+    setGenerating(true)
+    setLoadingData(true)
+
+    try {
+      const filters = buildFilters()
+      const start = new Date(filters.startDate)
+      const end = new Date(filters.endDate)
+      const month = start.getMonth() + 1
+      const year = start.getFullYear()
+
+      // 1. Lấy báo cáo tổng hợp
+      const reportResult = await attendanceAPI.getAttendanceReport({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        departmentId: filters.departmentId,
+        page: 0,
+        size: 1000,
+      } as any)
+
+      // 2. Lấy tất cả work shifts
+      const workShifts = await attendanceAPI.getWorkShifts()
+
+      // 3. Lấy work schedules trong khoảng thời gian
+      const schedules = await attendanceAPI.getWorkSchedules({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        page: 0,
+        size: 1000,
+      })
+
+      // 4. Lấy summary cho một số nhân viên (giới hạn để tránh quá nhiều request)
+      const uniqueEmployeeIds = Array.from(new Set(reportResult.content.map(r => r.employeeId))).slice(0, 20)
+      const employeeSummaries: (AttendanceSummaryResponse | null)[] = await Promise.all(
+        uniqueEmployeeIds.map(async (employeeId) => {
+          try {
+            return await attendanceAPI.getEmployeeAttendanceSummary(employeeId, month, year)
+          } catch {
+            return null
+          }
+        })
+      )
+
+      // 5. Tính toán metrics chi tiết
+      const attendanceAggregates = aggregateAttendance(reportResult.content)
+      const byStatus = {
+        PRESENT: reportResult.content.filter(r => r.status === 'PRESENT').length,
+        LATE: reportResult.content.filter(r => r.status === 'LATE').length,
+        ABSENT: reportResult.content.filter(r => r.status === 'ABSENT').length,
+        OVERTIME: reportResult.content.filter(r => r.status === 'OVERTIME').length,
+        HALF_DAY: reportResult.content.filter(r => r.status === 'HALF_DAY').length,
+        EARLY_DEPARTURE: reportResult.content.filter(r => r.status === 'EARLY_DEPARTURE').length,
+      }
+
+      const topLateEmployees = reportResult.content
+        .filter(r => r.status === 'LATE')
+        .reduce((acc, r) => {
+          acc[r.employeeId] = (acc[r.employeeId] || 0) + 1
+          return acc
+        }, {} as Record<number, number>)
+
+      const context: AIReportContext = {
+        filters,
+        generatedAt: new Date().toISOString(),
+        reportType: "attendance",
+        attendance: {
+          totalRecords: reportResult.totalElements,
+          totalEmployees: attendanceAggregates.length,
+          aggregates: attendanceAggregates,
+          detailedMetrics: {
+            byStatus,
+            byWorkShift: workShifts.map(shift => ({
+              shiftId: shift.id,
+              shiftName: shift.name,
+              count: reportResult.content.filter(r => r.workShiftId === shift.id).length,
+            })),
+            schedulesTotal: schedules.totalElements,
+            schedulesByStatus: {
+              SCHEDULED: schedules.content.filter(s => s.status === 'SCHEDULED').length,
+              COMPLETED: schedules.content.filter(s => s.status === 'COMPLETED').length,
+              ABSENT: schedules.content.filter(s => s.status === 'ABSENT').length,
+              CANCELLED: schedules.content.filter(s => s.status === 'CANCELLED').length,
+            },
+            employeeSummaries: employeeSummaries.filter(s => s !== null) as AttendanceSummaryResponse[],
+            topLateEmployees: Object.entries(topLateEmployees)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 10)
+              .map(([employeeId, count]) => ({
+                employeeId: Number(employeeId),
+                count,
+                employeeName: reportResult.content.find(r => r.employeeId === Number(employeeId))?.employeeName || "",
+              })),
+            perfectAttendanceEmployees: Array.from(
+              new Set(
+                reportResult.content
+                  .filter(r => r.status === 'PRESENT' || r.status === 'OVERTIME')
+                  .map(r => r.employeeId)
+              )
+            ).length,
+          },
+          workShifts,
+          schedules: schedules.content,
+        },
+      }
+
+      const aiText = await aiReportAPI.generateAttendanceReport(context)
+      setReportTexts(prev => ({ ...prev, attendance: aiText }))
+      setReportText(aiText || "")
+      setSuccessMessage("Đã tạo báo cáo chấm công chi tiết bằng AI.")
+    } catch (err: any) {
+      console.error("Error generating attendance report:", err)
+      setError(err?.response?.data?.message || err.message || "Không thể tạo báo cáo chấm công")
+    } finally {
+      setGenerating(false)
+      setLoadingData(false)
+    }
+  }
+
+  // Báo cáo lương chi tiết
+  const handleGeneratePayrollReport = async () => {
+    setError(null)
+    setSuccessMessage(null)
+    setGenerating(true)
+    setLoadingData(true)
+
+    try {
+      const filters = buildFilters()
+      const start = new Date(filters.startDate)
+      const month = start.getMonth() + 1
+      const year = start.getFullYear()
+
+      // 1. Preview lương
+      const preview = await payrollAPI.previewPayroll(month, year, filters.departmentId)
+
+      // 2. Tổng hợp payroll
+      const summary = await payrollAPI.getPayrollSummary(month, year, filters.departmentId)
+
+      // 3. Báo cáo theo phòng ban (nếu có)
+      let departmentReport = null
+      if (filters.departmentId) {
+        try {
+          departmentReport = await payrollAPI.getDepartmentPayrollReport(
+            filters.departmentId,
+            month,
+            year,
+            0,
+            1000
+          )
+        } catch {
+          // Ignore if department report fails
+        }
+      }
+
+      // 4. Lấy tất cả allowances
+      const allowances = await allowanceAPI.getAllAllowances()
+
+      // 5. Tính toán metrics chi tiết
+      const detailedMetrics = {
+        totalEmployees: summary.totalEmployees,
+        totalBaseSalary: summary.totalBaseSalary,
+        totalOvertimePay: summary.totalOvertimePay,
+        totalAllowances: summary.totalAllowances,
+        totalDeductions: summary.totalDeductions,
+        totalGrossPay: summary.totalGrossPay,
+        totalNetPay: summary.totalNetPay,
+        averageNetPay: summary.totalEmployees > 0 
+          ? summary.totalNetPay / summary.totalEmployees 
+          : 0,
+        byStatus: {
+          DRAFT: summary.payrolls?.filter((p: any) => p.status === 'DRAFT').length || 0,
+          PROCESSED: summary.payrolls?.filter((p: any) => p.status === 'PROCESSED').length || 0,
+          PAID: summary.payrolls?.filter((p: any) => p.status === 'PAID').length || 0,
+        },
+        topEarners: (summary.payrolls || [])
+          .sort((a: any, b: any) => b.netPay - a.netPay)
+          .slice(0, 10)
+          .map((p: any) => ({
+            employeeId: p.employeeId,
+            employeeName: p.employeeName,
+            netPay: p.netPay,
+          })),
+        allowancesBreakdown: allowances.map(a => ({
+          name: a.name,
+          type: a.type,
+          amount: a.amount,
+          count: preview.filter((p: any) => 
+            p.deductionDetails?.some((d: any) => d.name === a.name)
+          ).length,
+        })),
+      }
+
+      const context: AIReportContext = {
+        filters,
+        generatedAt: new Date().toISOString(),
+        reportType: "payroll",
+        payrollSummary: {
+          payPeriodMonth: month,
+          payPeriodYear: year,
+          totalEmployees: summary.totalEmployees,
+          totalBaseSalary: summary.totalBaseSalary,
+          totalOvertimePay: summary.totalOvertimePay,
+          totalAllowances: summary.totalAllowances,
+          totalDeductions: summary.totalDeductions,
+          totalGrossPay: summary.totalGrossPay,
+          totalNetPay: summary.totalNetPay,
+        },
+        payrollDetails: {
+          preview,
+          departmentReport: departmentReport?.content || [],
+          detailedMetrics,
+          allowances,
+        },
+      }
+
+      const aiText = await aiReportAPI.generatePayrollReport(context)
+      setReportTexts(prev => ({ ...prev, payroll: aiText }))
+      setReportText(aiText || "")
+      setSuccessMessage("Đã tạo báo cáo lương chi tiết bằng AI.")
+    } catch (err: any) {
+      console.error("Error generating payroll report:", err)
+      setError(err?.response?.data?.message || err.message || "Không thể tạo báo cáo lương")
+    } finally {
+      setGenerating(false)
+      setLoadingData(false)
+    }
+  }
+
+  // Báo cáo nghỉ phép chi tiết
+  const handleGenerateLeaveReport = async () => {
+    setError(null)
+    setSuccessMessage(null)
+    setGenerating(true)
+    setLoadingData(true)
+
+    try {
+      const filters = buildFilters()
+
+      // 1. Lấy tất cả đơn nghỉ phép
+      const allRequests = await leaveAPI.getAllLeaveRequests({
+        page: 0,
+        size: 1000,
+      })
+
+      // 2. Lọc theo khoảng thời gian
+      const filteredRequests = allRequests.content.filter(lr => {
+        const startDate = new Date(lr.startDate)
+        const endDate = new Date(lr.endDate)
+        const filterStart = new Date(filters.startDate)
+        const filterEnd = new Date(filters.endDate)
+        return (startDate >= filterStart && startDate <= filterEnd) ||
+               (endDate >= filterStart && endDate <= filterEnd) ||
+               (startDate <= filterStart && endDate >= filterEnd)
+      })
+
+      // 3. Lấy tất cả leave types
+      const leaveTypes = await leaveAPI.getAllLeaveTypes()
+
+      // 4. Lấy số dư nghỉ phép của các nhân viên có đơn nghỉ
+      const employeeIds = Array.from(new Set(filteredRequests.map(lr => lr.employeeId)))
+      const leaveBalances: (LeaveBalance[] | null)[] = await Promise.all(
+        employeeIds.slice(0, 50).map(async (employeeId) => {
+          try {
+            return await leaveAPI.getEmployeeLeaveBalance(employeeId)
+          } catch {
+            return null
+          }
+        })
+      )
+
+      // 5. Tính toán metrics chi tiết
+      const detailedMetrics = {
+        totalRequests: filteredRequests.length,
+        byStatus: {
+          PENDING: filteredRequests.filter(lr => lr.status === 'PENDING').length,
+          APPROVED: filteredRequests.filter(lr => lr.status === 'APPROVED').length,
+          REJECTED: filteredRequests.filter(lr => lr.status === 'REJECTED').length,
+          CANCELLED: filteredRequests.filter(lr => lr.status === 'CANCELLED').length,
+        },
+        byLeaveType: leaveTypes.map(lt => ({
+          leaveTypeId: lt.id,
+          leaveTypeName: lt.name,
+          count: filteredRequests.filter(lr => lr.leaveTypeId === lt.id).length,
+          totalDays: filteredRequests
+            .filter(lr => lr.leaveTypeId === lt.id)
+            .reduce((sum, lr) => sum + lr.totalDays, 0),
+        })),
+        totalDays: filteredRequests.reduce((sum, lr) => sum + lr.totalDays, 0),
+        averageDaysPerRequest: filteredRequests.length > 0
+          ? filteredRequests.reduce((sum, lr) => sum + lr.totalDays, 0) / filteredRequests.length
+          : 0,
+        topRequesters: Object.entries(
+          filteredRequests.reduce((acc, lr) => {
+            acc[lr.employeeId] = (acc[lr.employeeId] || 0) + lr.totalDays
+            return acc
+          }, {} as Record<number, number>)
+        )
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 10)
+          .map(([employeeId, totalDays]) => ({
+            employeeId: Number(employeeId),
+            totalDays,
+            employeeName: filteredRequests.find(lr => lr.employeeId === Number(employeeId))?.employeeName || "",
+          })),
+        leaveBalances: leaveBalances.filter(b => b !== null).flat() as LeaveBalance[],
+      }
+
+      const leaveSummaryData = aggregateLeave(filteredRequests)
+      const context: AIReportContext = {
+        filters,
+        generatedAt: new Date().toISOString(),
+        reportType: "leave",
+        leaveSummary: leaveSummaryData,
+        leaveDetails: {
+          requests: filteredRequests,
+          leaveTypes,
+          detailedMetrics,
+        },
+      }
+
+      const aiText = await aiReportAPI.generateLeaveReport(context)
+      setReportTexts(prev => ({ ...prev, leave: aiText }))
+      setReportText(aiText || "")
+      setSuccessMessage("Đã tạo báo cáo nghỉ phép chi tiết bằng AI.")
+    } catch (err: any) {
+      console.error("Error generating leave report:", err)
+      setError(err?.response?.data?.message || err.message || "Không thể tạo báo cáo nghỉ phép")
+    } finally {
+      setGenerating(false)
+      setLoadingData(false)
+    }
+  }
+
+  // Báo cáo lịch làm việc chi tiết
+  const handleGenerateScheduleReport = async () => {
+    setError(null)
+    setSuccessMessage(null)
+    setGenerating(true)
+    setLoadingData(true)
+
+    try {
+      const filters = buildFilters()
+
+      // 1. Lấy tất cả work schedules
+      const schedules = await attendanceAPI.getWorkSchedules({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        page: 0,
+        size: 1000,
+      })
+
+      // 2. Lấy tất cả work shifts
+      const workShifts = await attendanceAPI.getWorkShifts()
+
+      // 3. Tính toán metrics chi tiết
+      const detailedMetrics = {
+        totalSchedules: schedules.totalElements,
+        totalEmployees: new Set(schedules.content.map(s => s.employeeId)).size,
+        byStatus: {
+          SCHEDULED: schedules.content.filter(s => s.status === 'SCHEDULED').length,
+          COMPLETED: schedules.content.filter(s => s.status === 'COMPLETED').length,
+          ABSENT: schedules.content.filter(s => s.status === 'ABSENT').length,
+          CANCELLED: schedules.content.filter(s => s.status === 'CANCELLED').length,
+        },
+        byWorkShift: workShifts.map(shift => ({
+          shiftId: shift.id,
+          shiftName: shift.name,
+          count: schedules.content.filter(s => s.workShiftId === shift.id).length,
+          completed: schedules.content.filter(s => 
+            s.workShiftId === shift.id && s.status === 'COMPLETED'
+          ).length,
+          absent: schedules.content.filter(s => 
+            s.workShiftId === shift.id && s.status === 'ABSENT'
+          ).length,
+        })),
+        complianceRate: schedules.totalElements > 0
+          ? (schedules.content.filter(s => s.status === 'COMPLETED').length / schedules.totalElements) * 100
+          : 0,
+        employeesWithHighAbsence: Object.entries(
+          schedules.content
+            .filter(s => s.status === 'ABSENT')
+            .reduce((acc, s) => {
+              acc[s.employeeId] = (acc[s.employeeId] || 0) + 1
+              return acc
+            }, {} as Record<number, number>)
+        )
+          .filter(([_, count]) => count >= 3)
+          .map(([employeeId, count]) => ({ employeeId: Number(employeeId), count })),
+      }
+
+      const workScheduleSummaryData = aggregateWorkSchedules(schedules.content)
+      const context: AIReportContext = {
+        filters,
+        generatedAt: new Date().toISOString(),
+        reportType: "schedule",
+        workScheduleSummary: workScheduleSummaryData,
+        scheduleDetails: {
+          schedules: schedules.content,
+          workShifts,
+          detailedMetrics,
+        },
+      }
+
+      const aiText = await aiReportAPI.generateScheduleReport(context)
+      setReportTexts(prev => ({ ...prev, schedule: aiText }))
+      setReportText(aiText || "")
+      setSuccessMessage("Đã tạo báo cáo lịch làm việc chi tiết bằng AI.")
+    } catch (err: any) {
+      console.error("Error generating schedule report:", err)
+      setError(err?.response?.data?.message || err.message || "Không thể tạo báo cáo lịch làm việc")
+    } finally {
+      setGenerating(false)
+      setLoadingData(false)
+    }
+  }
+
+  // Hàm tổng hợp - gọi hàm generate tương ứng với reportType
+  const handleGenerateReport = async () => {
+    switch (reportType) {
+      case 'attendance':
+        await handleGenerateAttendanceReport()
+        break
+      case 'payroll':
+        await handleGeneratePayrollReport()
+        break
+      case 'leave':
+        await handleGenerateLeaveReport()
+        break
+      case 'schedule':
+        await handleGenerateScheduleReport()
+        break
+      case 'overview':
+      default:
+        await handleGenerateOverviewReport()
+        break
+    }
+  }
+
+  // Cập nhật reportText khi reportType thay đổi
+  useEffect(() => {
+    const savedText = reportTexts[reportType]
+    if (savedText) {
+      setReportText(savedText)
+    } else {
+      setReportText("")
+    }
+  }, [reportType, reportTexts])
 
   const handleSendEmail = async () => {
     setError(null)
@@ -379,47 +842,245 @@ export function AIReportPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {loadingData && !reportText && (
-            <LoadingPage message="Đang thu thập dữ liệu và tạo báo cáo bằng AI..." />
-          )}
+          <Tabs value={reportType} onValueChange={(v) => setReportType(v as ReportType)} className="w-full">
+            <TabsList className="grid w-full grid-cols-5 mb-4">
+              <TabsTrigger value="overview">Tổng hợp</TabsTrigger>
+              <TabsTrigger value="attendance">Chấm công</TabsTrigger>
+              <TabsTrigger value="payroll">Lương</TabsTrigger>
+              <TabsTrigger value="leave">Nghỉ phép</TabsTrigger>
+              <TabsTrigger value="schedule">Lịch làm việc</TabsTrigger>
+            </TabsList>
 
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-muted-foreground">
-              Nội dung báo cáo (có thể chỉnh sửa trước khi gửi)
-            </label>
-            <Editor
-              apiKey="z171bhrekb9d41scukzkr1q5t0cf9vuek9abbv549brnjuqj"
-              value={reportText}
-              onEditorChange={(content) => setReportText(content)}
-              init={{
-                height: 480,
-                menubar: false,
-                plugins: [
-                  "advlist",
-                  "autolink",
-                  "lists",
-                  "link",
-                  "charmap",
-                  "preview",
-                  "anchor",
-                  "searchreplace",
-                  "visualblocks",
-                  "code",
-                  "fullscreen",
-                  "insertdatetime",
-                  "table",
-                  "wordcount",
-                ],
-                toolbar:
-                  "undo redo | formatselect | " +
-                  "bold italic underline | alignleft aligncenter alignright alignjustify | " +
-                  "bullist numlist outdent indent | removeformat",
-                language: "vi",
-                content_style:
-                  "body { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }",
-              }}
-            />
-          </div>
+            <TabsContent value="overview" className="mt-4">
+              {loadingData && !reportText && (
+                <LoadingPage message="Đang thu thập dữ liệu và tạo báo cáo tổng hợp bằng AI..." />
+              )}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Nội dung báo cáo tổng hợp (có thể chỉnh sửa trước khi gửi)
+                </label>
+                <Editor
+                  apiKey="z171bhrekb9d41scukzkr1q5t0cf9vuek9abbv549brnjuqj"
+                  value={reportText}
+                  onEditorChange={(content) => {
+                    setReportText(content)
+                    setReportTexts(prev => ({ ...prev, overview: content }))
+                  }}
+                  init={{
+                    height: 480,
+                    menubar: false,
+                    plugins: [
+                      "advlist",
+                      "autolink",
+                      "lists",
+                      "link",
+                      "charmap",
+                      "preview",
+                      "anchor",
+                      "searchreplace",
+                      "visualblocks",
+                      "code",
+                      "fullscreen",
+                      "insertdatetime",
+                      "table",
+                      "wordcount",
+                    ],
+                    toolbar:
+                      "undo redo | formatselect | " +
+                      "bold italic underline | alignleft aligncenter alignright alignjustify | " +
+                      "bullist numlist outdent indent | removeformat",
+                    language: "vi",
+                    content_style:
+                      "body { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }",
+                  }}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="attendance" className="mt-4">
+              {loadingData && !reportText && (
+                <LoadingPage message="Đang thu thập dữ liệu chấm công và tạo báo cáo chi tiết bằng AI..." />
+              )}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Nội dung báo cáo chấm công chi tiết (có thể chỉnh sửa trước khi gửi)
+                </label>
+                <Editor
+                  apiKey="z171bhrekb9d41scukzkr1q5t0cf9vuek9abbv549brnjuqj"
+                  value={reportText}
+                  onEditorChange={(content) => {
+                    setReportText(content)
+                    setReportTexts(prev => ({ ...prev, attendance: content }))
+                  }}
+                  init={{
+                    height: 480,
+                    menubar: false,
+                    plugins: [
+                      "advlist",
+                      "autolink",
+                      "lists",
+                      "link",
+                      "charmap",
+                      "preview",
+                      "anchor",
+                      "searchreplace",
+                      "visualblocks",
+                      "code",
+                      "fullscreen",
+                      "insertdatetime",
+                      "table",
+                      "wordcount",
+                    ],
+                    toolbar:
+                      "undo redo | formatselect | " +
+                      "bold italic underline | alignleft aligncenter alignright alignjustify | " +
+                      "bullist numlist outdent indent | removeformat",
+                    language: "vi",
+                    content_style:
+                      "body { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }",
+                  }}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="payroll" className="mt-4">
+              {loadingData && !reportText && (
+                <LoadingPage message="Đang thu thập dữ liệu lương và tạo báo cáo chi tiết bằng AI..." />
+              )}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Nội dung báo cáo lương chi tiết (có thể chỉnh sửa trước khi gửi)
+                </label>
+                <Editor
+                  apiKey="z171bhrekb9d41scukzkr1q5t0cf9vuek9abbv549brnjuqj"
+                  value={reportText}
+                  onEditorChange={(content) => {
+                    setReportText(content)
+                    setReportTexts(prev => ({ ...prev, payroll: content }))
+                  }}
+                  init={{
+                    height: 480,
+                    menubar: false,
+                    plugins: [
+                      "advlist",
+                      "autolink",
+                      "lists",
+                      "link",
+                      "charmap",
+                      "preview",
+                      "anchor",
+                      "searchreplace",
+                      "visualblocks",
+                      "code",
+                      "fullscreen",
+                      "insertdatetime",
+                      "table",
+                      "wordcount",
+                    ],
+                    toolbar:
+                      "undo redo | formatselect | " +
+                      "bold italic underline | alignleft aligncenter alignright alignjustify | " +
+                      "bullist numlist outdent indent | removeformat",
+                    language: "vi",
+                    content_style:
+                      "body { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }",
+                  }}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="leave" className="mt-4">
+              {loadingData && !reportText && (
+                <LoadingPage message="Đang thu thập dữ liệu nghỉ phép và tạo báo cáo chi tiết bằng AI..." />
+              )}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Nội dung báo cáo nghỉ phép chi tiết (có thể chỉnh sửa trước khi gửi)
+                </label>
+                <Editor
+                  apiKey="z171bhrekb9d41scukzkr1q5t0cf9vuek9abbv549brnjuqj"
+                  value={reportText}
+                  onEditorChange={(content) => {
+                    setReportText(content)
+                    setReportTexts(prev => ({ ...prev, leave: content }))
+                  }}
+                  init={{
+                    height: 480,
+                    menubar: false,
+                    plugins: [
+                      "advlist",
+                      "autolink",
+                      "lists",
+                      "link",
+                      "charmap",
+                      "preview",
+                      "anchor",
+                      "searchreplace",
+                      "visualblocks",
+                      "code",
+                      "fullscreen",
+                      "insertdatetime",
+                      "table",
+                      "wordcount",
+                    ],
+                    toolbar:
+                      "undo redo | formatselect | " +
+                      "bold italic underline | alignleft aligncenter alignright alignjustify | " +
+                      "bullist numlist outdent indent | removeformat",
+                    language: "vi",
+                    content_style:
+                      "body { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }",
+                  }}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="schedule" className="mt-4">
+              {loadingData && !reportText && (
+                <LoadingPage message="Đang thu thập dữ liệu lịch làm việc và tạo báo cáo chi tiết bằng AI..." />
+              )}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Nội dung báo cáo lịch làm việc chi tiết (có thể chỉnh sửa trước khi gửi)
+                </label>
+                <Editor
+                  apiKey="z171bhrekb9d41scukzkr1q5t0cf9vuek9abbv549brnjuqj"
+                  value={reportText}
+                  onEditorChange={(content) => {
+                    setReportText(content)
+                    setReportTexts(prev => ({ ...prev, schedule: content }))
+                  }}
+                  init={{
+                    height: 480,
+                    menubar: false,
+                    plugins: [
+                      "advlist",
+                      "autolink",
+                      "lists",
+                      "link",
+                      "charmap",
+                      "preview",
+                      "anchor",
+                      "searchreplace",
+                      "visualblocks",
+                      "code",
+                      "fullscreen",
+                      "insertdatetime",
+                      "table",
+                      "wordcount",
+                    ],
+                    toolbar:
+                      "undo redo | formatselect | " +
+                      "bold italic underline | alignleft aligncenter alignright alignjustify | " +
+                      "bullist numlist outdent indent | removeformat",
+                    language: "vi",
+                    content_style:
+                      "body { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }",
+                  }}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

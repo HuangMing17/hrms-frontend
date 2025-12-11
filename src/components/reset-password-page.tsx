@@ -3,11 +3,14 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Lock, CheckCircle, XCircle } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
+import { cn } from "./ui/utils"
 import { authAPI, ValidateResetTokenResponse, ResetPasswordResponse } from "../lib/api"
+import { SHAKE_ANIMATION, PAGE_TRANSITION } from "../lib/animations"
 
 interface ResetPasswordPageProps {
   token: string
@@ -171,12 +174,18 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button
-              onClick={handleBackToLogin}
-              className="w-full bg-beauty-gradient hover:shadow-vibrant text-white"
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ duration: 0.15 }}
             >
-              Quay lại đăng nhập
-            </Button>
+              <Button
+                onClick={handleBackToLogin}
+                className="w-full bg-beauty-gradient hover:shadow-vibrant text-white"
+              >
+                Quay lại đăng nhập
+              </Button>
+            </motion.div>
           </CardContent>
         </Card>
       </div>
@@ -198,12 +207,18 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button
-              onClick={handleBackToLogin}
-              className="w-full bg-beauty-gradient hover:shadow-vibrant text-white"
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ duration: 0.15 }}
             >
-              Đăng nhập ngay
-            </Button>
+              <Button
+                onClick={handleBackToLogin}
+                className="w-full bg-beauty-gradient hover:shadow-vibrant text-white"
+              >
+                Đăng nhập ngay
+              </Button>
+            </motion.div>
           </CardContent>
         </Card>
       </div>
@@ -212,7 +227,12 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
 
   // Reset password form
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-indigo-900 flex items-center justify-center p-4">
+    <motion.div
+      className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-indigo-900 flex items-center justify-center p-4"
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3 }}
+    >
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Đặt lại mật khẩu</CardTitle>
@@ -223,11 +243,26 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Error Message */}
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-              </div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    x: [0, -10, 10, -10, 10, 0],
+                  }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{
+                    duration: 0.5,
+                    ease: "easeInOut",
+                  }}
+                  className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3"
+                >
+                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* New Password */}
             <div className="space-y-2">
@@ -236,16 +271,22 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
               </Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="new-password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Nhập mật khẩu mới"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="pl-10 pr-10 h-11"
-                  required
-                  disabled={isLoading}
-                />
+                <motion.div
+                  whileFocus={{ scale: 1.01 }}
+                  transition={{ duration: 0.15 }}
+                  className="relative"
+                >
+                  <Input
+                    id="new-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Nhập mật khẩu mới"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="pl-10 pr-10 h-11"
+                    required
+                    disabled={isLoading}
+                  />
+                </motion.div>
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -267,21 +308,31 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
                 Xác nhận mật khẩu
               </Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="confirm-password"
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="Xác nhận mật khẩu mới"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="pl-10 pr-10 h-11"
-                  required
-                  disabled={isLoading}
-                />
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                <motion.div
+                  whileFocus={{ scale: 1.01 }}
+                  transition={{ duration: 0.15 }}
+                  className="relative"
+                >
+                  <Input
+                    id="confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Xác nhận mật khẩu mới"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={cn(
+                      "pl-10 pr-10 h-11",
+                      confirmPassword && newPassword !== confirmPassword && "border-destructive focus-visible:ring-destructive/20"
+                    )}
+                    required
+                    disabled={isLoading}
+                    aria-invalid={confirmPassword && newPassword !== confirmPassword}
+                  />
+                </motion.div>
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors z-10"
                   disabled={isLoading}
                 >
                   {showConfirmPassword ? (
@@ -291,6 +342,19 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
                   )}
                 </button>
               </div>
+              <AnimatePresence>
+                {confirmPassword && newPassword !== confirmPassword && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2 }}
+                    className="text-sm text-destructive"
+                  >
+                    Mật khẩu xác nhận không khớp
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Password requirements */}
@@ -307,34 +371,46 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
             </div>
 
             {/* Submit Button */}
-            <Button
-              type="submit"
-              className="w-full bg-beauty-gradient hover:shadow-vibrant text-white h-11"
-              disabled={isLoading || !newPassword || !confirmPassword}
+            <motion.div
+              whileHover={!isLoading && newPassword && confirmPassword ? { scale: 1.02 } : {}}
+              whileTap={!isLoading && newPassword && confirmPassword ? { scale: 0.98 } : {}}
+              transition={{ duration: 0.15 }}
             >
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Đang cập nhật...
-                </div>
-              ) : (
-                "Cập nhật mật khẩu"
-              )}
-            </Button>
+              <Button
+                type="submit"
+                className="w-full bg-beauty-gradient hover:shadow-vibrant text-white h-11"
+                disabled={isLoading || !newPassword || !confirmPassword}
+              >
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Đang cập nhật...
+                  </div>
+                ) : (
+                  "Cập nhật mật khẩu"
+                )}
+              </Button>
+            </motion.div>
 
             {/* Back to Login */}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleBackToLogin}
-              className="w-full"
-              disabled={isLoading}
+            <motion.div
+              whileHover={!isLoading ? { scale: 1.02 } : {}}
+              whileTap={!isLoading ? { scale: 0.98 } : {}}
+              transition={{ duration: 0.15 }}
             >
-              Quay lại đăng nhập
-            </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleBackToLogin}
+                className="w-full"
+                disabled={isLoading}
+              >
+                Quay lại đăng nhập
+              </Button>
+            </motion.div>
           </form>
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   )
 }

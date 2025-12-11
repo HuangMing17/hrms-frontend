@@ -32,7 +32,11 @@ function ContextMenuPortal({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Portal>) {
   return (
-    <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />
+    <ContextMenuPrimitive.Portal 
+      data-slot="context-menu-portal" 
+      {...props}
+      container={typeof document !== 'undefined' ? document.body : undefined}
+    />
   );
 }
 

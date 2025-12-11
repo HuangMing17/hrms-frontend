@@ -24,7 +24,11 @@ function AlertDialogPortal({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
   return (
-    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
+    <AlertDialogPrimitive.Portal 
+      data-slot="alert-dialog-portal" 
+      {...props}
+      container={typeof document !== 'undefined' ? document.body : undefined}
+    />
   );
 }
 

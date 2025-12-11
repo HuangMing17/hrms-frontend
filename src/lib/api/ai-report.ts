@@ -43,20 +43,91 @@ export interface WorkScheduleSummary {
 export interface AIReportContext {
   filters: AIReportFilters
   generatedAt: string
+  reportType?: "overview" | "attendance" | "payroll" | "leave" | "schedule"
   attendance?: {
     totalRecords: number
     totalEmployees: number
     aggregates: EmployeeAttendanceAggregate[]
+    detailedMetrics?: any
+    workShifts?: any[]
+    schedules?: any[]
   }
-  payrollSummary?: any
+  attendanceDetails?: any
+  payrollSummary?: {
+    payPeriodMonth?: number
+    payPeriodYear?: number
+    totalEmployees?: number
+    totalBaseSalary?: number
+    totalOvertimePay?: number
+    totalAllowances?: number
+    totalDeductions?: number
+    totalGrossPay?: number
+    totalNetPay?: number
+  }
+  payrollDetails?: {
+    preview?: any[]
+    departmentReport?: any[]
+    detailedMetrics?: any
+    allowances?: any[]
+  }
   leaveSummary?: LeaveSummary
+  leaveDetails?: {
+    requests?: any[]
+    leaveTypes?: any[]
+    detailedMetrics?: any
+  }
   workScheduleSummary?: WorkScheduleSummary
+  scheduleDetails?: {
+    schedules?: any[]
+    workShifts?: any[]
+    detailedMetrics?: any
+  }
 }
 
 export const aiReportAPI = {
   async generateReport(context: AIReportContext): Promise<string> {
     const response = await api.post("/api/ai-reports/generate", context)
     // backend có thể trả về { data: { reportText } } hoặc { reportText }
+    return (
+      response.data?.data?.reportText ||
+      response.data?.reportText ||
+      response.data?.data ||
+      ""
+    )
+  },
+
+  async generateAttendanceReport(context: AIReportContext): Promise<string> {
+    const response = await api.post("/api/ai-reports/generate/attendance", context)
+    return (
+      response.data?.data?.reportText ||
+      response.data?.reportText ||
+      response.data?.data ||
+      ""
+    )
+  },
+
+  async generatePayrollReport(context: AIReportContext): Promise<string> {
+    const response = await api.post("/api/ai-reports/generate/payroll", context)
+    return (
+      response.data?.data?.reportText ||
+      response.data?.reportText ||
+      response.data?.data ||
+      ""
+    )
+  },
+
+  async generateLeaveReport(context: AIReportContext): Promise<string> {
+    const response = await api.post("/api/ai-reports/generate/leave", context)
+    return (
+      response.data?.data?.reportText ||
+      response.data?.reportText ||
+      response.data?.data ||
+      ""
+    )
+  },
+
+  async generateScheduleReport(context: AIReportContext): Promise<string> {
+    const response = await api.post("/api/ai-reports/generate/schedule", context)
     return (
       response.data?.data?.reportText ||
       response.data?.reportText ||

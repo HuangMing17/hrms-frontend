@@ -453,15 +453,31 @@ export function HRDashboard() {
                   <div className="py-6 text-center text-sm text-muted-foreground">Chưa có thông báo nào</div>
                 ) : (
                   <div className="space-y-4">
-                    {notifications.map((notification) => (
-                      <div key={notification.id} className="rounded-lg border border-border/60 p-3">
-                        <p className="font-medium">{notification.title}</p>
-                        <p className="text-sm text-muted-foreground">{notification.message}</p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {formatDistanceToNowStrict(new Date(notification.createdAt), { addSuffix: true })}
-                        </p>
-                      </div>
-                    ))}
+                    {notifications.map((notification) => {
+                      // Validate createdAt trước khi format
+                      let timeAgo = "Vừa xong"
+                      if (notification.createdAt) {
+                        try {
+                          const createdAtDate = new Date(notification.createdAt)
+                          // Kiểm tra xem Date có hợp lệ không
+                          if (!isNaN(createdAtDate.getTime())) {
+                            timeAgo = formatDistanceToNowStrict(createdAtDate, { addSuffix: true })
+                          }
+                        } catch (error) {
+                          console.warn("Invalid createdAt for notification:", notification.id, notification.createdAt)
+                        }
+                      }
+                      
+                      return (
+                        <div key={notification.id} className="rounded-lg border border-border/60 p-3">
+                          <p className="font-medium">{notification.title}</p>
+                          <p className="text-sm text-muted-foreground">{notification.message}</p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {timeAgo}
+                          </p>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </CardContent>

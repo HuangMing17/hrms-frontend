@@ -85,21 +85,28 @@ export function HistoryPanel({
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {records.map((record) => (
-                                <TableRow key={record.id}>
-                                    <TableCell>{record.attendanceDate}</TableCell>
-                                    <TableCell>{record.checkInTime ?? "-"}</TableCell>
-                                    <TableCell>{record.checkOutTime ?? "-"}</TableCell>
-                                    <TableCell>{record.status}</TableCell>
-                                    <TableCell>{record.notes ?? "-"}</TableCell>
-                                </TableRow>
-                            ))}
-                            {records.length === 0 && (
+                            {records.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={5} className="text-center text-muted-foreground">
                                         Không có dữ liệu
                                     </TableCell>
                                 </TableRow>
+                            ) : (
+                                records.map((record, index) => (
+                                    <TableRow
+                                        key={record.id}
+                                        className="animate-fade-in-up hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                                        style={{
+                                            animationDelay: `${index * 40}ms`,
+                                        }}
+                                    >
+                                        <TableCell>{record.attendanceDate}</TableCell>
+                                        <TableCell>{record.checkInTime ?? "-"}</TableCell>
+                                        <TableCell>{record.checkOutTime ?? "-"}</TableCell>
+                                        <TableCell>{record.status}</TableCell>
+                                        <TableCell>{record.notes ?? "-"}</TableCell>
+                                    </TableRow>
+                                ))
                             )}
                         </TableBody>
                     </Table>

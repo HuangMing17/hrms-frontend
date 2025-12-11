@@ -204,7 +204,31 @@ export function WeeklyAttendanceGrid({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredEmployees.length === 0 ? (
+                                {loading && attendanceRecords.length === 0 ? (
+                                    // Skeleton loading rows
+                                    Array.from({ length: 5 }).map((_, skeletonIdx) => (
+                                        <tr
+                                            key={`skeleton-${skeletonIdx}`}
+                                            className="animate-pulse"
+                                            style={{
+                                                animationDelay: `${skeletonIdx * 100}ms`,
+                                            }}
+                                        >
+                                            <td className="sticky left-0 z-10 bg-gray-100 dark:bg-gray-800 border border-gradient p-3">
+                                                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-32 mb-2"></div>
+                                                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-24"></div>
+                                            </td>
+                                            {daysOfWeek.map((_, dayIdx) => (
+                                                <td
+                                                    key={dayIdx}
+                                                    className="border border-gradient p-1"
+                                                >
+                                                    <div className="h-16 bg-gray-100 dark:bg-gray-800 rounded"></div>
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                ) : filteredEmployees.length === 0 ? (
                                     <tr>
                                         <td
                                             colSpan={8}
@@ -214,8 +238,14 @@ export function WeeklyAttendanceGrid({
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredEmployees.map((employee) => (
-                                        <tr key={employee.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                    filteredEmployees.map((employee, index) => (
+                                        <tr
+                                            key={employee.id}
+                                            className="animate-fade-in-up hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                                            style={{
+                                                animationDelay: `${index * 30}ms`,
+                                            }}
+                                        >
                                             <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 border border-gradient p-3 font-medium">
                                                 <div>
                                                     <div className="font-semibold">{employee.fullName}</div>

@@ -63,6 +63,19 @@ export interface Employee {
     kpiUpdatedAt?: string
     // Denormalized fields
     positionCode?: string
+    // CV/Resume fields
+    educationLevel?: string
+    educationMajor?: string
+    educationSchool?: string
+    educationGraduationYear?: number
+    yearsOfExperience?: number
+    previousExperience?: string // JSON string
+    skills?: string // JSON array string
+    languages?: string // JSON array string
+    certifications?: string // JSON array string
+    bio?: string
+    linkedinUrl?: string
+    portfolioUrl?: string
 }
 
 export interface CreateEmployeeRequest {
@@ -85,6 +98,19 @@ export interface CreateEmployeeRequest {
     positionId?: number
     managerId?: number
     workShiftId?: number
+    // CV/Resume fields
+    educationLevel?: string
+    educationMajor?: string
+    educationSchool?: string
+    educationGraduationYear?: number
+    yearsOfExperience?: number
+    previousExperience?: string // JSON string
+    skills?: string // JSON array string
+    languages?: string // JSON array string
+    certifications?: string // JSON array string
+    bio?: string
+    linkedinUrl?: string
+    portfolioUrl?: string
 }
 
 export interface UpdateEmployeeRequest {
@@ -449,6 +475,33 @@ export const employeeAPI = {
             return response.data.data!
         } catch (error: any) {
             console.error('Error promoting employee:', error)
+            throw error
+        }
+    },
+
+    // 18. Parse CV from file upload
+    async parseCV(file: File): Promise<any> {
+        try {
+            const formData = new FormData()
+            formData.append("file", file)
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/employees/parse-cv`, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+                },
+                body: formData,
+            })
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: "Failed to parse CV" }))
+                throw new Error(errorData.message || "Failed to parse CV")
+            }
+
+            const result = await response.json()
+            return result.data
+        } catch (error: any) {
+            console.error('Error parsing CV:', error)
             throw error
         }
     }

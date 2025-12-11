@@ -6,11 +6,6 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "./ui/avatar";
-import { NotificationDropdown } from "./notification-dropdown";
-import { useState, useEffect } from "react";
-import { notificationAPI } from "../lib/api/notification";
-import { useAuth } from "../contexts/AuthContext";
-// Removed SidebarTrigger import
 
 interface HRHeaderProps {
   isDarkMode: boolean;

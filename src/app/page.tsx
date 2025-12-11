@@ -14,6 +14,7 @@ import { ReportsAnalytics } from "../components/reports-analytics"
 import { AIReportPage } from "../components/ai-report"
 import { LoginPage } from "../components/login-page"
 import { AuthProvider, useAuth } from "../contexts/AuthContext"
+import { AnimatedPageTransition } from "../components/ui/animated-page"
 
 function AppContent() {
   const { isAuthenticated, logout, user } = useAuth()
@@ -168,7 +169,9 @@ function AppContent() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <HRHeader isDarkMode={isDarkMode} onToggleTheme={toggleTheme} />
           <main className="flex-1 overflow-auto bg-gradient-to-br from-pink-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-indigo-900">
-            {renderContent()}
+            <AnimatedPageTransition activeView={activeView}>
+              {renderContent()}
+            </AnimatedPageTransition>
           </main>
         </div>
       </div>

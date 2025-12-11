@@ -79,6 +79,7 @@ export interface PayrollSummaryResponse {
     totalGrossPay: number
     totalNetPay: number
     payrolls: PayrollResponse[]
+    isPreview?: boolean // Flag để phân biệt giữa payrolls thật và preview
 }
 
 export interface PayrollHistoryParams {

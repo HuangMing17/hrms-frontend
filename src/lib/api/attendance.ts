@@ -171,6 +171,13 @@ export const attendanceAPI = {
         return extractData<PaginatedResponse<AttendanceRecord>>(response)
     },
 
+    async getEmployeeAttendanceSummary(employeeId: number, month: number, year: number): Promise<AttendanceSummaryResponse> {
+        const response = await api.get(`/api/attendance/employee/${employeeId}/summary`, {
+            params: { month, year }
+        })
+        return extractData<AttendanceSummaryResponse>(response)
+    },
+
     async getAttendanceReport(params: AttendanceReportParams): Promise<PaginatedResponse<AttendanceRecord>> {
         const { startDate, endDate, departmentId, page = 0, size = 20 } = params
         const response = await api.get('/api/attendance/report', {

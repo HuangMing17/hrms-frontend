@@ -92,19 +92,19 @@ export function TodayPanel({
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="animate-fade-in-up" style={{ animationDelay: "0ms" }}>
           <CardHeader>
             <CardTitle>Có mặt</CardTitle>
           </CardHeader>
           <CardContent className="text-3xl font-semibold">{summary.present}</CardContent>
         </Card>
-        <Card>
+        <Card className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
           <CardHeader>
             <CardTitle>Đi muộn</CardTitle>
           </CardHeader>
           <CardContent className="text-3xl font-semibold">{summary.late}</CardContent>
         </Card>
-        <Card>
+        <Card className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
           <CardHeader>
             <CardTitle>Vắng mặt</CardTitle>
           </CardHeader>
@@ -128,21 +128,55 @@ export function TodayPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell className="font-medium">{record.employeeName}</TableCell>
-                  <TableCell>{record.attendanceDate}</TableCell>
-                  <TableCell>{record.checkInTime ?? "-"}</TableCell>
-                  <TableCell>{record.checkOutTime ?? "-"}</TableCell>
-                  <TableCell>{renderStatus(record.status)}</TableCell>
-                </TableRow>
-              ))}
-              {records.length === 0 && (
+              {loading && records.length === 0 ? (
+                // Skeleton loading rows
+                Array.from({ length: 5 }).map((_, skeletonIdx) => (
+                  <TableRow
+                    key={`skeleton-${skeletonIdx}`}
+                    className="animate-pulse"
+                    style={{
+                      animationDelay: `${skeletonIdx * 100}ms`,
+                    }}
+                  >
+                    <TableCell>
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24"></div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-20"></div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-20"></div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : records.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground">
                     Chưa có bản ghi
                   </TableCell>
                 </TableRow>
+              ) : (
+                records.map((record, index) => (
+                  <TableRow
+                    key={record.id}
+                    className="animate-fade-in-up hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                    style={{
+                      animationDelay: `${index * 40}ms`,
+                    }}
+                  >
+                    <TableCell className="font-medium">{record.employeeName}</TableCell>
+                    <TableCell>{record.attendanceDate}</TableCell>
+                    <TableCell>{record.checkInTime ?? "-"}</TableCell>
+                    <TableCell>{record.checkOutTime ?? "-"}</TableCell>
+                    <TableCell>{renderStatus(record.status)}</TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>

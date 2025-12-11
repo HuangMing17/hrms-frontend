@@ -707,11 +707,9 @@ export function LeaveManagement() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4 bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-900 dark:to-purple-900">
+        <TabsList className="grid w-full grid-cols-2 bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-900 dark:to-purple-900">
           <TabsTrigger value="requests">Đơn xin nghỉ</TabsTrigger>
           <TabsTrigger value="types">Loại phép</TabsTrigger>
-          <TabsTrigger value="balance">Số ngày phép</TabsTrigger>
-          <TabsTrigger value="calendar">Lịch nghỉ phép</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests" className="space-y-4">
@@ -971,152 +969,6 @@ export function LeaveManagement() {
               })}
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="balance" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Số ngày phép còn lại - Năm {selectedYear}</h3>
-            <div className="flex gap-2">
-              <Select
-                value={selectedYear.toString()}
-                onValueChange={(value) => setSelectedYear(parseInt(value))}
-              >
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[2024, 2025, 2026].map(year => (
-                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {balanceLoading && leaveBalances.length === 0 ? (
-            <LoadingPage message="Đang tải số dư phép..." />
-          ) : !balanceLoading && leaveBalances.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Không có dữ liệu số dư nghỉ phép</p>
-            </div>
-          ) : (
-            <div className="rounded-md border border-gradient shadow-vibrant">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-900/20 dark:to-purple-900/20">
-                    <TableHead>Loại phép</TableHead>
-                    <TableHead>Tổng quyền lợi</TableHead>
-                    <TableHead>Đã sử dụng</TableHead>
-                    <TableHead>Còn lại</TableHead>
-                    <TableHead>Chuyển năm</TableHead>
-                    <TableHead>Tiến độ</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {leaveBalances.map((balance) => {
-                    const usagePercent = balance.totalEntitlement > 0
-                      ? Math.round((balance.usedDays / balance.totalEntitlement) * 100)
-                      : 0
-
-                    return (
-                      <TableRow key={balance.id}>
-                        <TableCell className="font-medium">
-                          <div>
-                            <div>{balance.leaveTypeName || balance.leaveTypeCode}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {balance.employeeName || `ID: ${balance.employeeId}`}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{balance.totalEntitlement} ngày</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
-                            {balance.usedDays} ngày
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                            {balance.remainingDays} ngày
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {balance.carryForwardDays > 0 ? (
-                            <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              {balance.carryForwardDays} ngày
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 max-w-[100px]">
-                              <div
-                                className={`h-2 rounded-full ${usagePercent >= 80
-                                  ? 'bg-red-600'
-                                  : usagePercent >= 50
-                                    ? 'bg-orange-600'
-                                    : 'bg-green-600'
-                                  }`}
-                                style={{ width: `${Math.min(usagePercent, 100)}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs text-muted-foreground">{usagePercent}%</span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="calendar" className="space-y-4">
-          <h3 className="text-lg font-semibold">Lịch nghỉ phép tháng 10/2024</h3>
-
-          <Card className="shadow-vibrant hover-glow border-gradient">
-            <CardContent className="p-6">
-              <div className="grid grid-cols-7 gap-2 text-center">
-                {/* Header */}
-                {["CN", "T2", "T3", "T4", "T5", "T6", "T7"].map((day) => (
-                  <div key={day} className="font-semibold p-2 bg-gray-100 dark:bg-gray-800 rounded">
-                    {day}
-                  </div>
-                ))}
-
-                {/* Calendar days */}
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
-                  const hasLeave = [15, 16, 20, 21, 22].includes(day)
-                  return (
-                    <div
-                      key={day}
-                      className={`p-2 border rounded ${hasLeave ? 'bg-orange-100 dark:bg-orange-900' : 'hover:bg-gray-50 dark:hover:bg-gray-800'} cursor-pointer`}
-                    >
-                      <div className="font-medium">{day}</div>
-                      {hasLeave && (
-                        <div className="text-xs text-orange-600 dark:text-orange-400">Nghỉ phép</div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="mt-4 flex gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-orange-100 dark:bg-orange-900 rounded"></div>
-                  <span>Ngày nghỉ phép</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gray-100 dark:bg-gray-800 rounded"></div>
-                  <span>Ngày làm việc</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 

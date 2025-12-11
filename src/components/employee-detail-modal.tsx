@@ -57,6 +57,7 @@ export function EmployeeDetailModal({
     const [position, setPosition] = useState<Position | null>(null)
     const [manager, setManager] = useState<Employee | null>(null)
     const [workShift, setWorkShift] = useState<any | null>(null)
+    const [mounted, setMounted] = useState(false)
 
     // KPI states
     const [kpiData, setKpiData] = useState<KPIDataResponse | null>(null)
@@ -67,6 +68,14 @@ export function EmployeeDetailModal({
     const [isUploadAvatarOpen, setIsUploadAvatarOpen] = useState(false)
     const [avatarFile, setAvatarFile] = useState<File | null>(null)
 
+    // Handle mount/unmount to prevent removeChild errors
+    useEffect(() => {
+        setMounted(true)
+        return () => {
+            setMounted(false)
+        }
+    }, [])
+
     // Update employee when prop changes
     useEffect(() => {
         setEmployee(initialEmployee)
@@ -74,10 +83,10 @@ export function EmployeeDetailModal({
 
     // Load data when modal opens or employee changes
     useEffect(() => {
-        if (isOpen && employee) {
+        if (isOpen && employee && mounted) {
             loadAllData()
         }
-    }, [isOpen, employee.id])
+    }, [isOpen, employee.id, mounted])
 
     const loadAllData = async () => {
         await Promise.all([
@@ -148,7 +157,7 @@ export function EmployeeDetailModal({
                         title: employee.positionTitle,
                         code: employee.positionCode || '',
                         description: '',
-                        level: '',
+                        level: 'STAFF', // Default level khi không có thông tin
                         baseSalary: 0,
                         departmentId: employee.departmentId || 0,
                         active: true,
@@ -164,7 +173,7 @@ export function EmployeeDetailModal({
                 title: employee.positionTitle,
                 code: employee.positionCode || '',
                 description: '',
-                level: '',
+                level: 'STAFF', // Default level khi không có thông tin
                 baseSalary: 0,
                 departmentId: employee.departmentId || 0,
                 active: true,
@@ -375,10 +384,19 @@ export function EmployeeDetailModal({
         return status ? labels[status] : '--'
     }
 
-    if (!isOpen) return null
+    if (!isOpen || !mounted) {
+        return null
+    }
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                    onClose()
+                }
+            }}
+        >
             <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-pink-50 to-purple-50 dark:from-gray-800 dark:to-gray-700">
@@ -654,6 +672,124 @@ export function EmployeeDetailModal({
                                                             <span className="text-xs text-gray-500 dark:text-gray-400">Số điện thoại:</span>
                                                             <p className="font-medium">{employee.emergencyPhone}</p>
                                                         </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* CV/Resume Information */}
+                                    {((employee as any).educationLevel || (employee as any).educationMajor || (employee as any).educationSchool || 
+                                      (employee as any).yearsOfExperience || (employee as any).bio || (employee as any).skills || 
+                                      (employee as any).languages || (employee as any).certifications || (employee as any).linkedinUrl || 
+                                      (employee as any).portfolioUrl) && (
+                                        <div className="pt-4 border-t">
+                                            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2 mb-3">
+                                                <User className="h-4 w-4" />
+                                                Thông tin CV/Resume
+                                            </h3>
+                                            <div className="space-y-3 text-sm">
+                                                {((employee as any).educationLevel || (employee as any).educationMajor || (employee as any).educationSchool || (employee as any).educationGraduationYear) && (
+                                                    <div>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">Học vấn:</span>
+                                                        <p className="font-medium">
+                                                            {[
+                                                                (employee as any).educationLevel,
+                                                                (employee as any).educationMajor,
+                                                                (employee as any).educationSchool,
+                                                                (employee as any).educationGraduationYear ? `Tốt nghiệp ${(employee as any).educationGraduationYear}` : null
+                                                            ].filter(Boolean).join(" - ")}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {(employee as any).yearsOfExperience !== null && (employee as any).yearsOfExperience !== undefined && (
+                                                    <div>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">Kinh nghiệm:</span>
+                                                        <p className="font-medium">{(employee as any).yearsOfExperience} năm</p>
+                                                    </div>
+                                                )}
+                                                {(employee as any).bio && (
+                                                    <div>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">Tóm tắt:</span>
+                                                        <p className="font-medium text-xs mt-1">{(employee as any).bio}</p>
+                                                    </div>
+                                                )}
+                                                {(employee as any).skills && (
+                                                    <div>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">Kỹ năng:</span>
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {(() => {
+                                                                try {
+                                                                    const skills = JSON.parse((employee as any).skills)
+                                                                    return Array.isArray(skills) ? skills.map((skill: string, idx: number) => (
+                                                                        <Badge key={idx} variant="secondary" className="text-xs">{skill}</Badge>
+                                                                    )) : null
+                                                                } catch {
+                                                                    return <span className="text-xs">{(employee as any).skills}</span>
+                                                                }
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {(employee as any).languages && (
+                                                    <div>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">Ngôn ngữ:</span>
+                                                        <div className="space-y-1 mt-1">
+                                                            {(() => {
+                                                                try {
+                                                                    const languages = JSON.parse((employee as any).languages)
+                                                                    return Array.isArray(languages) ? languages.map((lang: any, idx: number) => (
+                                                                        <p key={idx} className="text-xs">
+                                                                            <span className="font-medium">{lang.language || lang}</span>
+                                                                            {lang.level && <span className="text-gray-500 ml-1">({lang.level})</span>}
+                                                                        </p>
+                                                                    )) : null
+                                                                } catch {
+                                                                    return <span className="text-xs">{(employee as any).languages}</span>
+                                                                }
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {(employee as any).certifications && (
+                                                    <div>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">Chứng chỉ:</span>
+                                                        <div className="space-y-1 mt-1">
+                                                            {(() => {
+                                                                try {
+                                                                    const certs = JSON.parse((employee as any).certifications)
+                                                                    return Array.isArray(certs) ? certs.map((cert: string, idx: number) => (
+                                                                        <p key={idx} className="text-xs">• {cert}</p>
+                                                                    )) : null
+                                                                } catch {
+                                                                    return <span className="text-xs">• {(employee as any).certifications}</span>
+                                                                }
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {((employee as any).linkedinUrl || (employee as any).portfolioUrl) && (
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                        {(employee as any).linkedinUrl && (
+                                                            <div>
+                                                                <span className="text-xs text-gray-500 dark:text-gray-400">LinkedIn:</span>
+                                                                <p className="font-medium text-xs truncate">
+                                                                    <a href={(employee as any).linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                                                        {(employee as any).linkedinUrl}
+                                                                    </a>
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {(employee as any).portfolioUrl && (
+                                                            <div>
+                                                                <span className="text-xs text-gray-500 dark:text-gray-400">Portfolio:</span>
+                                                                <p className="font-medium text-xs truncate">
+                                                                    <a href={(employee as any).portfolioUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                                                        {(employee as any).portfolioUrl}
+                                                                    </a>
+                                                                </p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>

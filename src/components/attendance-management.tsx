@@ -434,10 +434,14 @@ export function AttendanceManagement() {
             const a = document.createElement("a")
             a.href = url
             a.download = `attendance-report-${today}.csv`
+            a.style.display = "none"
             document.body.appendChild(a)
             a.click()
             window.URL.revokeObjectURL(url)
-            document.body.removeChild(a)
+            // Kiểm tra element vẫn là child của body trước khi remove
+            if (a.parentNode === document.body) {
+                document.body.removeChild(a)
+            }
         } catch (err: any) {
             setError(err?.response?.data?.message || err.message || "Không thể xuất báo cáo")
         }
